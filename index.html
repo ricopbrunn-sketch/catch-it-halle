@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b57d0">
+<meta name="description" content="Catch-it Halle – Live-Abfahrten in Halle (Saale)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg">
+<title>Catch-it Halle</title>
+<style>
+:root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#6d7687;--accent:#0b57d0;--line:#e5e8ef;--ok:#16853a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:var(--accent);color:white;padding:20px 18px 24px;border-radius:0 0 24px 24px}
+header h1{margin:0;font-size:25px}header p{margin:5px 0 0;opacity:.85}
+main{max-width:720px;margin:auto;padding:16px 16px 88px}
+.search{display:flex;gap:8px;margin-top:12px}.search input{flex:1;padding:13px 14px;border:1px solid var(--line);border-radius:14px;font-size:16px}
+button{border:0;border-radius:13px;padding:12px 15px;background:var(--accent);color:white;font-weight:650}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin:12px 0;box-shadow:0 3px 15px #1720330b}
+.stop{font-size:20px;font-weight:750}.muted{color:var(--muted)}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--line)}
+.line{font-weight:800;min-width:50px}.dest{flex:1}.time{font-size:21px;font-weight:800;text-align:right}.rt{color:var(--ok);font-size:12px;font-weight:700}.delay{color:#b25a00;font-size:12px}
+.tabs{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:center;gap:6px;padding:8px calc(8px + env(safe-area-inset-bottom))}
+.tabs button{background:transparent;color:var(--muted);flex:1;max-width:180px}.tabs button.active{color:var(--accent);background:#eef4ff}
+.hidden{display:none}.list button{width:100%;text-align:left;background:white;color:var(--text);border:1px solid var(--line);margin-top:7px}
+.error{color:#a32222;background:#fff0f0;padding:12px;border-radius:12px}
+</style>
+</head>
+<body>
+<header><h1>Catch-it Halle</h1><p>Live-Abfahrten für Halle (Saale)</p></header>
+<main>
+<section id="home">
+<div class="search"><input id="search" placeholder="Haltestelle suchen …"><button onclick="searchStops()">Suchen</button></div>
+<div id="results" class="list"></div>
+<div class="card">
+<div class="stop" id="stopName">Marktplatz</div>
+<div class="muted" id="status">Lade Abfahrten …</div>
+<div id="departures"></div>
+</div>
+</section>
+<section id="favorites" class="hidden"><div class="card"><h2>Favoriten</h2><div id="favList" class="list"></div></div></section>
+<section id="more" class="hidden"><div class="card"><h2>Einstellungen</h2><p class="muted">Catch-it Halle 1.0.0</p><button onclick="installApp()">App installieren</button><p class="muted">Die Installation erscheint nur, wenn dein Browser diese PWA unterstützt.</p></div></section>
+</main>
+<nav class="tabs"><button class="active" onclick="tab('home',this)">Start</button><button onclick="tab('favorites',this)">Favoriten</button><button onclick="tab('more',this)">Mehr</button></nav>
+<script src="app.js"></script>
+</body>
+</html>
