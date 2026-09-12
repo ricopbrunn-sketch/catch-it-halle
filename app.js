@@ -50,15 +50,16 @@ async function findStops(query) {
     {
       meth: "LocMatch",
       req: {
-  input: {
-    loc: {
-      type: "S",
-      name: query
-    },
-    field: "S",
-    maxLoc: 15
-  }
-}
+        input: {
+          loc: {
+            type: "S",
+            name: query
+          },
+          field: "S",
+          maxLoc: 15
+        }
+      }
+    }
   ]);
 
   const service = data.svcResL[0];
