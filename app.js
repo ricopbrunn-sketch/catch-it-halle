@@ -1,7 +1,11 @@
 const AID = "hf7mcf9bv3nv8g5f";
 const URL = "https://frosty-leaf-0fc9.ricopbrunn.workers.dev";
 
-let stop = { name: "Marktplatz", id: null };
+let stop = {
+  name: "Marktplatz",
+  id: null
+};
+
 let favorites = JSON.parse(localStorage.getItem("fav") || "[]");
 let deferredPrompt;
 
@@ -19,6 +23,11 @@ const base = {
     name: "webapp"
   }
 };
+
+
+/* =========================
+   HAFAS / INSA
+========================= */
 
 async function hafas(svcReqL) {
   const response = await fetch(URL, {
@@ -38,12 +47,21 @@ async function hafas(svcReqL) {
 
   const data = await response.json();
 
+  if (data.err && data.err !== "OK") {
+    throw new Error(data.errTxt || data.err);
+  }
+
   if (!data.svcResL || !data.svcResL.length) {
     throw new Error("Keine INSA-Antwort");
   }
 
   return data;
 }
+
+
+/* =========================
+   HALTESTELLENSUCHE
+========================= */
 
 async function findStops(query) {
   const data = await hafas([
@@ -69,6 +87,116 @@ async function findStops(query) {
   }
 
   return service.res?.match?.locL || [];
+}
+
+
+async function searchStops() {
+  const input = document.getElementById("search");
+  const query = input.value.trim();
+
+  if (!query) return;
+
+  const box = document.getElementById("results");
+  box.innerHTML = "Suche …";
+
+  try {
+    const stops = await findStops(query);
+
+    if (!stops.length) {
+      box.innerHTML = "Keine Haltestelle gefunden.";
+      return;
+    }
+
+    box.innerHTML = "";
+
+    stops.slice(0, 8).forEach((item) => {
+      const button = document.createElement("button");
+      button.textContent = item.name;
+
+      button.onclick = () => {
+        chooseStop(item);
+      };
+
+      box.appendChild(button);
+    });
+
+  } catch (error) {
+    box.innerHTML =
+      "Fehler bei der Suche: " + error.message;
+  }
+}
+
+
+async function chooseStop(item) {
+  stop = {
+    name: item.name,
+    id: item.lid
+  };
+
+  document.getElementById("results").innerHTML = "";
+  document.getElementById("stopName").textContent = stop.name;
+
+  await load();
+}
+
+
+/* =========================
+   DATUM / ZEIT
+========================= */
+
+function hafasDate() {
+  const now = new Date();
+
+  return (
+    now.getFullYear().toString() +
+    String(now.getMonth() + 1).padStart(2, "0") +
+    String(now.getDate()).padStart(2, "0")
+  );
+}
+
+
+function hafasTime() {
+  const now = new Date();
+
+  return (
+    String(now.getHours()).padStart(2, "0") +
+    String(now.getMinutes()).padStart(2, "0") +
+    "00"
+  );
+}
+
+
+function normalizeHafasTime(value) {
+  if (!value) return null;
+
+  const text = String(value).replace(/\D/g, "");
+
+  if (text.length < 4) return null;
+
+  return text.padStart(6, "0").slice(0, 6);
+}
+
+
+function timeToDate(value) {
+  const normalized = normalizeHafasTime(value);
+
+  if (!normalized) return null;
+
+  const hours = Number(normalized.slice(0, 2));
+  const minutes = Number(normalized.slice(2, 4));
+  const seconds = Number(normalized.slice(4, 6));
+
+  const now = new Date();
+  const date = new Date(now);
+
+  date.setHours(hours, minutes, seconds, 0);
+
+  /*
+    INSA liefert bei Nachtfahrten Zeiten nach Mitternacht.
+    Liegt die errechnete Uhrzeit deutlich in der Vergangenheit,
+    gehört sie sehr wahrscheinlich zum folgenden Kalendertag.
+  */
+  if (date.getTime() < now.getTime() - 6 * 60 * 60 * 1000) {  return service.res?.match?.locL || [];
 }
 
 async function searchStops() {
