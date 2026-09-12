@@ -135,9 +135,26 @@ function hafasTime() {
 }
 
 function showTime(value) {
-  if (!value || value.length < 4) return "--:--";
+  if (!value || value.length < 4) return "--";
 
-  return value.slice(0, 2) + ":" + value.slice(2, 4);
+  const hours = Number(value.slice(0, 2));
+  const minutes = Number(value.slice(2, 4));
+
+  const now = new Date();
+  const departure = new Date();
+
+  departure.setHours(hours, minutes, 0, 0);
+
+  if (departure < now) {
+    departure.setDate(departure.getDate() + 1);
+  }
+
+  const diff = Math.round((departure - now) / 60000);
+
+  if (diff <= 0) return "jetzt";
+  if (diff === 1) return "in 1 min";
+
+  return "in " + diff + " min";
 }
 
 async function load() {
