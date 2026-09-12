@@ -17,7 +17,6 @@ let lastStop = readJSON("catchit-last-stop", null);
 const base = {
   ver: "1.81",
   lang: "deu",
-  formatted: false,
 
   auth: {
     type: "AID",
@@ -34,16 +33,18 @@ const base = {
 
 
 /* =========================================================
-   HILFSFUNKTIONEN
+   SPEICHER / HILFSFUNKTIONEN
 ========================================================= */
 
 function readJSON(key, fallback) {
   try {
     const value = localStorage.getItem(key);
 
-    return value
-      ? JSON.parse(value)
-      : fallback;
+    if (!value) {
+      return fallback;
+    }
+
+    return JSON.parse(value);
 
   } catch {
     return fallback;
@@ -52,10 +53,17 @@ function readJSON(key, fallback) {
 
 
 function saveJSON(key, value) {
-  localStorage.setItem(
-    key,
-    JSON.stringify(value)
-  );
+  try {
+    localStorage.setItem(
+      key,
+      JSON.stringify(value)
+    );
+  } catch (error) {
+    console.error(
+      "Speichern fehlgeschlagen:",
+      error
+    );
+  }
 }
 
 
@@ -97,45 +105,38 @@ function uniqueBy(array, keyFunction) {
 ========================================================= */
 
 async function hafas(svcReqL) {
-  const controller =
-    new AbortController();
+  const controller = new AbortController();
 
-  const timeout =
-    setTimeout(
-      () => controller.abort(),
-      12000
-    );
+  const timeout = setTimeout(
+    () => controller.abort(),
+    15000
+  );
 
   try {
+    const response = await fetch(API_URL, {
+      method: "POST",
 
-    const response =
-      await fetch(API_URL, {
-        method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
 
-        headers: {
-          "Content-Type":
-            "application/json"
-        },
+      body: JSON.stringify({
+        ...base,
+        svcReqL
+      }),
 
-        body: JSON.stringify({
-          ...base,
-          svcReqL
-        }),
-
-        signal: controller.signal
-      });
+      signal: controller.signal
+    });
 
 
     if (!response.ok) {
       throw new Error(
-        "Serverfehler " +
-        response.status
+        "Serverfehler " + response.status
       );
     }
 
 
-    const data =
-      await response.json();
+    const data = await response.json();
 
 
     if (
@@ -162,10 +163,7 @@ async function hafas(svcReqL) {
     return data;
 
   } catch (error) {
-
-    if (
-      error.name === "AbortError"
-    ) {
+    if (error.name === "AbortError") {
       throw new Error(
         "INSA antwortet momentan zu langsam."
       );
@@ -174,19 +172,19 @@ async function hafas(svcReqL) {
     throw error;
 
   } finally {
-
     clearTimeout(timeout);
   }
 }
 
 
 /* =========================================================
-   HALTESTELLEN
+   HALTESTELLENSUCHE
 ========================================================= */
 
 function isHalleStop(item) {
-  const name =
-    normalizeText(item.name);
+  const name = normalizeText(
+    item?.name
+  );
 
   return (
     name.includes("halle (saale)") ||
@@ -198,31 +196,26 @@ function isHalleStop(item) {
 
 
 async function locMatch(searchText) {
-  const data =
-    await hafas([
-      {
-        meth: "LocMatch",
+  const data = await hafas([
+    {
+      meth: "LocMatch",
 
-        req: {
-          input: {
+      req: {
+        input: {
+          loc: {
+            type: "S",
+            name: searchText
+          },
 
-            loc: {
-              type: "S",
-              name: searchText
-            },
-
-            field: "S",
-
-            maxLoc:
-              MAX_SEARCH_RESULTS
-          }
+          field: "S",
+          maxLoc: MAX_SEARCH_RESULTS
         }
       }
-    ]);
+    }
+  ]);
 
 
-  const service =
-    data.svcResL[0];
+  const service = data.svcResL[0];
 
 
   if (
@@ -236,80 +229,95 @@ async function locMatch(searchText) {
   }
 
 
-  return (
-    service.res?.match?.locL ||
-    []
-  );
+  return service.res?.match?.locL || [];
 }
 
 
 async function findStops(query) {
-  query = query.trim();
+  query = String(query || "").trim();
 
   if (query.length < 2) {
     return [];
   }
 
 
-  /*
-    Erst gezielt Halle durchsuchen.
-  */
+  const alreadyContainsHalle =
+    normalizeText(query).includes("halle");
+
 
   const halleQuery =
-    normalizeText(query)
-      .includes("halle")
+    alreadyContainsHalle
       ? query
       : "Halle (Saale), " + query;
 
 
-  let results =
-    await locMatch(
-      halleQuery
-    );
+  let combined = [];
 
 
   /*
-    Falls INSA auf die kombinierte Suche
-    nichts liefert, noch einmal allgemein
-    suchen und anschließend Halle filtern.
+    Suche 1:
+    gezielt mit Halle (Saale)
   */
+  try {
+    const first =
+      await locMatch(halleQuery);
 
-  if (!results.length) {
-    results =
-      await locMatch(query);
+    combined.push(...first);
+
+  } catch (error) {
+    console.warn(
+      "Gezielte Halle-Suche fehlgeschlagen:",
+      error
+    );
   }
 
 
-  results =
-    results.filter(
-      item =>
-        item.type === "S" &&
-        isHalleStop(item)
+  /*
+    Suche 2:
+    allgemeine Suche als Ergänzung
+  */
+  try {
+    const second =
+      await locMatch(query);
+
+    combined.push(...second);
+
+  } catch (error) {
+    console.warn(
+      "Allgemeine Suche fehlgeschlagen:",
+      error
     );
+  }
 
 
-  results =
-    uniqueBy(
-      results,
-
-      item =>
-        item.lid ||
-        item.extId ||
-        item.name
-    );
-
-
-  results.sort(
-    (a, b) =>
-      String(a.name)
-        .localeCompare(
-          String(b.name),
-          "de"
-        )
+  combined = combined.filter(
+    item =>
+      item &&
+      item.name &&
+      item.lid &&
+      isHalleStop(item)
   );
 
 
-  return results;
+  combined = uniqueBy(
+    combined,
+    item =>
+      item.lid ||
+      item.extId ||
+      item.name
+  );
+
+
+  combined.sort(
+    (a, b) =>
+      String(a.name).localeCompare(
+        String(b.name),
+        "de"
+      )
+  );
+
+
+  return combined;
 }
 
 
@@ -317,26 +325,29 @@ async function searchStops(
   immediate = false
 ) {
   const input =
-    document.getElementById(
-      "search"
-    );
+    document.getElementById("search");
 
   const resultsBox =
-    document.getElementById(
-      "results"
-    );
+    document.getElementById("results");
+
+
+  if (!input || !resultsBox) {
+    return;
+  }
+
 
   const query =
     input.value.trim();
 
 
   if (query.length < 2) {
-
     resultsBox.innerHTML =
       query.length
-        ? `<div class="search-info">
-             Bitte mindestens 2 Zeichen eingeben.
-           </div>`
+        ? `
+          <div class="search-info">
+            Bitte mindestens 2 Zeichen eingeben.
+          </div>
+        `
         : "";
 
     return;
@@ -347,22 +358,17 @@ async function searchStops(
     ++currentSearchId;
 
 
-  resultsBox.innerHTML =
-    `<div class="search-info">
-       Haltestellen werden gesucht …
-     </div>`;
+  resultsBox.innerHTML = `
+    <div class="search-info">
+      Haltestellen werden gesucht …
+    </div>
+  `;
 
 
   try {
-
     const stops =
       await findStops(query);
 
-
-    /*
-      Zwischenzeitlich neue Suche gestartet?
-      Dann dieses Ergebnis ignorieren.
-    */
 
     if (
       searchId !==
@@ -373,11 +379,11 @@ async function searchStops(
 
 
     if (!stops.length) {
-
-      resultsBox.innerHTML =
-        `<div class="search-info">
-           Keine Haltestelle in Halle (Saale) gefunden.
-         </div>`;
+      resultsBox.innerHTML = `
+        <div class="search-info">
+          Keine Haltestelle in Halle (Saale) gefunden.
+        </div>
+      `;
 
       return;
     }
@@ -386,11 +392,7 @@ async function searchStops(
     resultsBox.innerHTML = "";
 
 
-    for (
-      const item
-      of stops
-    ) {
-
+    for (const item of stops) {
       const button =
         document.createElement(
           "button"
@@ -399,23 +401,25 @@ async function searchStops(
       button.className =
         "search-result";
 
-      button.innerHTML =
-        `<span class="search-pin">●</span>
-         <span>
-           ${escapeHTML(item.name)}
-         </span>`;
+
+      button.innerHTML = `
+        <span class="search-pin">●</span>
+
+        <span>
+          ${escapeHTML(item.name)}
+        </span>
+      `;
 
 
-      button.onclick =
+      button.addEventListener(
+        "click",
         async () => {
-
           input.value = "";
-
-          resultsBox.innerHTML =
-            "";
+          resultsBox.innerHTML = "";
 
           await selectStop(item);
-        };
+        }
+      );
 
 
       resultsBox.appendChild(
@@ -424,58 +428,48 @@ async function searchStops(
     }
 
   } catch (error) {
-
-    resultsBox.innerHTML =
-      `<div class="error-box">
-         ${escapeHTML(
-           error.message
-         )}
-       </div>`;
+    resultsBox.innerHTML = `
+      <div class="error-box">
+        ${escapeHTML(error.message)}
+      </div>
+    `;
   }
 }
 
 
 function debounceSearch() {
-  clearTimeout(
-    searchTimer
+  clearTimeout(searchTimer);
+
+  searchTimer = setTimeout(
+    () => searchStops(),
+    SEARCH_DELAY
   );
-
-
-  searchTimer =
-    setTimeout(
-      () => searchStops(),
-      SEARCH_DELAY
-    );
 }
 
 
 async function selectStop(item) {
+  if (!item?.lid) {
+    return;
+  }
+
+
   currentStop = {
-    name:
-      item.name,
-
-    id:
-      item.extId ||
-      "",
-
-    lid:
-      item.lid ||
-      ""
+    name: item.name,
+    id: item.extId || "",
+    lid: item.lid
   };
 
 
-  lastStop =
-    currentStop;
+  lastStop = currentStop;
 
 
   saveJSON(
     "catchit-last-stop",
-    lastStop
+    currentStop
   );
 
 
   updateStopTitle();
-
   updateFavoriteButton();
 
   await loadDepartures();
@@ -483,21 +477,49 @@ async function selectStop(item) {
 
 
 /* =========================================================
-   ZEITVERARBEITUNG
+   DATUM / ZEIT
 ========================================================= */
 
-function parseHafasDate(
-  dateString
-) {
-  const value =
+function currentHafasDate() {
+  const now = new Date();
+
+  return (
+    now.getFullYear().toString() +
     String(
-      dateString || ""
-    );
+      now.getMonth() + 1
+    ).padStart(2, "0") +
+    String(
+      now.getDate()
+    ).padStart(2, "0")
+  );
+}
 
 
-  if (
-    !/^\d{8}$/.test(value)
-  ) {
+function currentHafasTime() {
+  const now = new Date();
+
+  return (
+    String(
+      now.getHours()
+    ).padStart(2, "0") +
+
+    String(
+      now.getMinutes()
+    ).padStart(2, "0") +
+
+    String(
+      now.getSeconds()
+    ).padStart(2, "0")
+  );
+}
+
+
+function parseHafasDate(value) {
+  const text =
+    String(value || "");
+
+
+  if (!/^\d{8}$/.test(text)) {
     return null;
   }
 
@@ -505,25 +527,23 @@ function parseHafasDate(
   return {
     year:
       Number(
-        value.slice(0, 4)
+        text.slice(0, 4)
       ),
 
     month:
       Number(
-        value.slice(4, 6)
+        text.slice(4, 6)
       ) - 1,
 
     day:
       Number(
-        value.slice(6, 8)
+        text.slice(6, 8)
       )
   };
 }
 
 
-function parseHafasTime(
-  value
-) {
+function parseHafasTime(value) {
   const digits =
     String(value || "")
       .replace(/\D/g, "");
@@ -534,33 +554,27 @@ function parseHafasTime(
   }
 
 
-  /*
-    Normale HAFAS-Zeit:
-    HHMMSS
-
-    HAFAS kann zusätzlich einen
-    Tagesoffset davor schreiben.
-  */
-
-  const time =
-    digits.slice(-6)
-      .padStart(6, "0");
+  let dayOffset = 0;
+  let timePart = digits;
 
 
-  const prefix =
-    digits.slice(
-      0,
-      Math.max(
+  if (digits.length > 6) {
+    const prefix =
+      digits.slice(
         0,
         digits.length - 6
-      )
-    );
+      );
+
+    dayOffset =
+      Number(prefix) || 0;
+
+    timePart =
+      digits.slice(-6);
+  }
 
 
-  const dayOffset =
-    prefix
-      ? Number(prefix)
-      : 0;
+  timePart =
+    timePart.padStart(6, "0");
 
 
   return {
@@ -568,17 +582,17 @@ function parseHafasTime(
 
     hour:
       Number(
-        time.slice(0, 2)
+        timePart.slice(0, 2)
       ),
 
     minute:
       Number(
-        time.slice(2, 4)
+        timePart.slice(2, 4)
       ),
 
     second:
       Number(
-        time.slice(4, 6)
+        timePart.slice(4, 6)
       )
   };
 }
@@ -589,14 +603,10 @@ function hafasDateTime(
   timeString
 ) {
   const date =
-    parseHafasDate(
-      dateString
-    );
+    parseHafasDate(dateString);
 
   const time =
-    parseHafasTime(
-      timeString
-    );
+    parseHafasTime(timeString);
 
 
   if (!time) {
@@ -604,39 +614,37 @@ function hafasDateTime(
   }
 
 
-  let baseDate;
+  const now = new Date();
+
+  const base =
+    date
+      ? new Date(
+          date.year,
+          date.month,
+          date.day,
+          0,
+          0,
+          0,
+          0
+        )
+      : new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+          0,
+          0,
+          0,
+          0
+        );
 
 
-  if (date) {
-
-    baseDate =
-      new Date(
-        date.year,
-        date.month,
-        date.day
-      );
-
-  } else {
-
-    const now =
-      new Date();
-
-    baseDate =
-      new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate()
-      );
-  }
-
-
-  baseDate.setDate(
-    baseDate.getDate() +
+  base.setDate(
+    base.getDate() +
     time.dayOffset
   );
 
 
-  baseDate.setHours(
+  base.setHours(
     time.hour,
     time.minute,
     time.second,
@@ -645,33 +653,27 @@ function hafasDateTime(
 
 
   /*
-    Falls keine Journey-Date vorhanden
-    und eine Zeit kurz nach Mitternacht
-    abgefragt wird.
+    Fallback für Fahrten nach Mitternacht,
+    falls INSA kein Datum mitsendet.
   */
-
   if (!date) {
-
-    const now =
-      new Date();
+    const sixHoursAgo =
+      now.getTime() -
+      6 * 60 * 60 * 1000;
 
 
     if (
-      baseDate <
-      new Date(
-        now.getTime() -
-        6 * 60 * 60 * 1000
-      )
+      base.getTime() <
+      sixHoursAgo
     ) {
-
-      baseDate.setDate(
-        baseDate.getDate() + 1
+      base.setDate(
+        base.getDate() + 1
       );
     }
   }
 
 
-  return baseDate;
+  return base;
 }
 
 
@@ -734,8 +736,8 @@ function calculateDelay(
 
   return Math.round(
     (
-      realtimeDate -
-      plannedDate
+      realtimeDate.getTime() -
+      plannedDate.getTime()
     ) / 60000
   );
 }
@@ -760,8 +762,7 @@ function getProduct(
 
 
   if (
-    typeof productIndex ===
-      "number" &&
+    typeof productIndex === "number" &&
     products[productIndex]
   ) {
     return products[
@@ -796,7 +797,7 @@ function getLineName(
 
 
 /* =========================================================
-   ABFAHRTEN
+   ABFAHRTSDATEN AUFBEREITEN
 ========================================================= */
 
 function parseDeparture(
@@ -815,7 +816,6 @@ function parseDeparture(
 
   const realtimeRaw =
     stopInfo.dTimeR ||
-    stopInfo.dTimeP ||
     journey.dTimeR ||
     plannedRaw;
 
@@ -855,18 +855,21 @@ function parseDeparture(
   const realtime =
     Boolean(
       stopInfo.dTimeR ||
-      stopInfo.dTimeP ||
-      stopInfo.dProgType
+      journey.dTimeR
     );
 
 
   return {
     id:
       journey.jid ||
-      `${getLineName(
-        journey,
-        products
-      )}-${realtimeRaw}`,
+      [
+        getLineName(
+          journey,
+          products
+        ),
+        realtimeRaw,
+        journey.dirTxt
+      ].join("-"),
 
     line:
       getLineName(
@@ -879,17 +882,17 @@ function parseDeparture(
       "Unbekannt",
 
     plannedDate,
-
     realtimeDate,
-
     delay,
-
     realtime,
-
     cancelled
   };
 }
 
+
+/* =========================================================
+   ABFAHRTEN LADEN
+========================================================= */
 
 async function loadDepartures() {
   const status =
@@ -903,7 +906,22 @@ async function loadDepartures() {
     );
 
 
-  if (!currentStop) {
+  if (
+    !status ||
+    !departures
+  ) {
+    return;
+  }
+
+
+  if (
+    !currentStop?.lid
+  ) {
+    status.textContent =
+      "Keine Haltestelle ausgewählt.";
+
+    departures.innerHTML = "";
+
     return;
   }
 
@@ -913,81 +931,39 @@ async function loadDepartures() {
 
 
   try {
+    const data = await hafas([
+      {
+        meth: "StationBoard",
 
-    const now =
-      new Date();
+        req: {
+          type: "DEP",
 
+          stbLoc: {
+            lid: currentStop.lid
+          },
 
-    const date =
-      now.getFullYear()
-        .toString() +
+          dirLoc: null,
 
-      String(
-        now.getMonth() + 1
-      ).padStart(2, "0") +
+          maxJny: 40,
 
-      String(
-        now.getDate()
-      ).padStart(2, "0");
+          date:
+            currentHafasDate(),
 
+          time:
+            currentHafasTime(),
 
-    const time =
-      String(
-        now.getHours()
-      ).padStart(2, "0") +
+          dur: 120,
 
-      String(
-        now.getMinutes()
-      ).padStart(2, "0") +
-
-      String(
-        now.getSeconds()
-      ).padStart(2, "0");
-
-
-    const data =
-      await hafas([
-        {
-          meth:
-            "StationBoard",
-
-          req: {
-            type:
-              "DEP",
-
-            stbLoc: {
-              lid:
-                currentStop.lid
-            },
-
-            dirLoc:
-              null,
-
-            maxJny:
-              40,
-
-            date,
-
-            time,
-
-            dur:
-              120,
-
-            jnyFltrL: [
-              {
-                type:
-                  "PROD",
-
-                mode:
-                  "INC",
-
-                value:
-                  1023
-              }
-            ]
-          }
+          jnyFltrL: [
+            {
+              type: "PROD",
+              mode: "INC",
+              value: 1023
+            }
+          ]
         }
-      ]);
+      }
+    ]);
 
 
     const service =
@@ -1009,67 +985,40 @@ async function loadDepartures() {
       service.res || {};
 
 
+    const journeys =
+      result.jnyL || [];
+
+
     const products =
-      result.common?.prodL ||
-      [];
+      result.common?.prodL || [];
 
 
     let list =
-      (result.jnyL || [])
-        .map(
-          journey =>
-            parseDeparture(
-              journey,
-              products
-            )
-        );
-
-
-    /*
-      Ausgefallene Fahrten separat behandeln.
-      Zunächst nicht vollständig entfernen.
-    */
-
-    list =
-      uniqueBy(
-        list,
-
-        item =>
-          item.id +
-          "-" +
-          (
-            item.realtimeDate
-              ?.getTime() ||
-            ""
+      journeys.map(
+        journey =>
+          parseDeparture(
+            journey,
+            products
           )
       );
 
 
-    list.sort(
-      (a, b) =>
+    list = uniqueBy(
+      list,
+      item =>
+        item.id +
+        "-" +
         (
-          a.realtimeDate
+          item.realtimeDate
             ?.getTime() ||
-          Number.MAX_SAFE_INTEGER
-        ) -
-        (
-          b.realtimeDate
-            ?.getTime() ||
-          Number.MAX_SAFE_INTEGER
+          ""
         )
     );
 
 
-    /*
-      Alte Fahrten entfernen.
-    */
-
-    list =
-      list.filter(item => {
-
-        if (
-          !item.realtimeDate
-        ) {
+    list = list.filter(
+      item => {
+        if (!item.realtimeDate) {
           return true;
         }
 
@@ -1080,1154 +1029,31 @@ async function loadDepartures() {
           Date.now() -
           90 * 1000
         );
-      });
-
-
-    renderDepartures(
-      list
+      }
     );
+
+
+    list.sort(
+      (a, b) => {
+        const aTime =
+          a.realtimeDate
+            ?.getTime() ??
+          Number.MAX_SAFE_INTEGER;
+
+
+        const bTime =
+          b.realtimeDate
+            ?.getTime() ??
+          Number.MAX_SAFE_INTEGER;
+
+
+        return aTime - bTime;
+      }
+    );
+
+
+    renderDepartures(list);
 
 
     status.textContent =
-      "Zuletzt aktualisiert: " +
-      new Date()
-        .toLocaleTimeString(
-          "de-DE",
-          {
-            hour:
-              "2-digit",
-
-            minute:
-              "2-digit"
-          }
-        );
-
-
-  } catch (error) {
-
-    status.textContent =
-      "Aktualisierung fehlgeschlagen";
-
-
-    departures.innerHTML =
-      `<div class="error-box">
-         ${escapeHTML(
-           error.message
-         )}
-       </div>`;
-  }
-}
-
-
-function renderDepartures(list) {
-  const container =
-    document.getElementById(
-      "departures"
-    );
-
-
-  container.innerHTML = "";
-
-
-  if (!list.length) {
-
-    container.innerHTML =
-      `<div class="empty-state">
-         Momentan keine Abfahrten gefunden.
-       </div>`;
-
-    return;
-  }
-
-
-  for (
-    const departure
-    of list
-  ) {
-
-    const row =
-      document.createElement(
-        "div"
-      );
-
-    row.className =
-      "departure-row";
-
-
-    if (
-      departure.cancelled
-    ) {
-      row.classList.add(
-        "cancelled"
-      );
-    }
-
-
-    const line =
-      document.createElement(
-        "div"
-      );
-
-    line.className =
-      "line-badge";
-
-    line.textContent =
-      departure.line;
-
-
-    const center =
-      document.createElement(
-        "div"
-      );
-
-    center.className =
-      "departure-main";
-
-
-    const destination =
-      document.createElement(
-        "div"
-      );
-
-    destination.className =
-      "destination";
-
-    destination.textContent =
-      departure.destination;
-
-
-    const meta =
-      document.createElement(
-        "div"
-      );
-
-    meta.className =
-      "departure-meta";
-
-
-    if (
-      departure.cancelled
-    ) {
-
-      meta.innerHTML =
-        `<span class="cancelled-label">
-           Fahrt fällt aus
-         </span>`;
-
-    } else {
-
-      const clock =
-        formatClock(
-          departure.realtimeDate
-        );
-
-
-      meta.innerHTML =
-        `<span>${clock}</span>`;
-
-
-      if (
-        departure.realtime
-      ) {
-
-        meta.innerHTML +=
-          `<span class="live">
-             ● Echtzeit
-           </span>`;
-      }
-
-
-      if (
-        departure.delay > 0
-      ) {
-
-        meta.innerHTML +=
-          `<span class="delay">
-             +${departure.delay} min
-           </span>`;
-
-      } else if (
-        departure.delay < 0
-      ) {
-
-        meta.innerHTML +=
-          `<span class="early">
-             ${departure.delay} min
-           </span>`;
-      }
-    }
-
-
-    center.appendChild(
-      destination
-    );
-
-    center.appendChild(
-      meta
-    );
-
-
-    const right =
-      document.createElement(
-        "div"
-      );
-
-    right.className =
-      "departure-time";
-
-
-    right.textContent =
-      departure.cancelled
-        ? "Ausfall"
-        : relativeTime(
-            departure.realtimeDate
-          );
-
-
-    row.appendChild(line);
-
-    row.appendChild(center);
-
-    row.appendChild(right);
-
-    container.appendChild(row);
-  }
-}
-
-
-/* =========================================================
-   AKTUELLE HALTESTELLE
-========================================================= */
-
-function updateStopTitle() {
-  const title =
-    document.getElementById(
-      "stopName"
-    );
-
-
-  if (
-    currentStop &&
-    title
-  ) {
-    title.textContent =
-      currentStop.name;
-  }
-}
-
-
-/* =========================================================
-   FAVORITEN
-========================================================= */
-
-function isFavorite(stop) {
-  if (!stop) {
-    return false;
-  }
-
-
-  return favorites.some(
-    favorite =>
-      favorite.lid ===
-      stop.lid
-  );
-}
-
-
-function toggleFavorite() {
-  if (!currentStop) {
-    return;
-  }
-
-
-  if (
-    isFavorite(
-      currentStop
-    )
-  ) {
-
-    favorites =
-      favorites.filter(
-        favorite =>
-          favorite.lid !==
-          currentStop.lid
-      );
-
-  } else {
-
-    favorites.push({
-      name:
-        currentStop.name,
-
-      id:
-        currentStop.id,
-
-      lid:
-        currentStop.lid
-    });
-  }
-
-
-  saveJSON(
-    "catchit-favorites",
-    favorites
-  );
-
-
-  updateFavoriteButton();
-
-  renderFavorites();
-}
-
-
-function updateFavoriteButton() {
-  const button =
-    document.getElementById(
-      "favoriteButton"
-    );
-
-
-  if (!button) {
-    return;
-  }
-
-
-  button.textContent =
-    isFavorite(currentStop)
-      ? "★"
-      : "☆";
-
-
-  button.title =
-    isFavorite(currentStop)
-      ? "Favorit entfernen"
-      : "Als Favorit speichern";
-}
-
-
-function renderFavorites() {
-  const box =
-    document.getElementById(
-      "favList"
-    );
-
-
-  if (!box) {
-    return;
-  }
-
-
-  box.innerHTML = "";
-
-
-  if (!favorites.length) {
-
-    box.innerHTML =
-      `<div class="empty-state">
-         Noch keine Favoriten gespeichert.
-       </div>`;
-
-    return;
-  }
-
-
-  for (
-    const favorite
-    of favorites
-  ) {
-
-    const button =
-      document.createElement(
-        "button"
-      );
-
-    button.className =
-      "favorite-item";
-
-
-    button.innerHTML =
-      `<span>★</span>
-       <span>
-         ${escapeHTML(
-           favorite.name
-         )}
-       </span>`;
-
-
-    button.onclick =
-      async () => {
-
-        currentStop =
-          favorite;
-
-
-        lastStop =
-          favorite;
-
-
-        saveJSON(
-          "catchit-last-stop",
-          favorite
-        );
-
-
-        showPage("home");
-
-        updateStopTitle();
-
-        updateFavoriteButton();
-
-        await loadDepartures();
-      };
-
-
-    box.appendChild(
-      button
-    );
-  }
-}
-
-
-/* =========================================================
-   NAVIGATION
-========================================================= */
-
-function showPage(page) {
-  document
-    .querySelectorAll(
-      ".page"
-    )
-    .forEach(
-      element =>
-        element.classList
-          .add("hidden")
-    );
-
-
-  document
-    .getElementById(page)
-    ?.classList
-    .remove("hidden");
-
-
-  document
-    .querySelectorAll(
-      ".nav-button"
-    )
-    .forEach(
-      button =>
-        button.classList
-          .toggle(
-            "active",
-            button.dataset.page ===
-            page
-          )
-    );
-
-
-  if (
-    page === "favorites"
-  ) {
-    renderFavorites();
-  }
-}
-
-
-/* =========================================================
-   PWA
-========================================================= */
-
-window.addEventListener(
-  "beforeinstallprompt",
-  event => {
-
-    event.preventDefault();
-
-    deferredPrompt =
-      event;
-
-
-    const installButton =
-      document.getElementById(
-        "installButton"
-      );
-
-
-    if (installButton) {
-      installButton.hidden =
-        false;
-    }
-  }
-);
-
-
-async function installApp() {
-  if (!deferredPrompt) {
-
-    alert(
-      "Öffne das Browser-Menü und wähle „Zum Startbildschirm hinzufügen“."
-    );
-
-    return;
-  }
-
-
-  deferredPrompt.prompt();
-
-  await deferredPrompt.userChoice;
-
-  deferredPrompt = null;
-}
-
-
-/* =========================================================
-   ONLINE / OFFLINE
-========================================================= */
-
-function updateConnectionState() {
-  document.body.classList.toggle(
-    "offline",
-    !navigator.onLine
-  );
-
-
-  const connection =
-    document.getElementById(
-      "connectionState"
-    );
-
-
-  if (connection) {
-    connection.textContent =
-      navigator.onLine
-        ? "Online"
-        : "Offline";
-  }
-}
-
-
-window.addEventListener(
-  "online",
-  () => {
-
-    updateConnectionState();
-
-    loadDepartures();
-  }
-);
-
-
-window.addEventListener(
-  "offline",
-  updateConnectionState
-);
-
-
-/* =========================================================
-   INITIALISIERUNG
-========================================================= */
-
-async function initialize() {
-  updateConnectionState();
-
-  renderFavorites();
-
-
-  document
-    .getElementById(
-      "search"
-    )
-    ?.addEventListener(
-      "input",
-      debounceSearch
-    );
-
-
-  document
-    .getElementById(
-      "search"
-    )
-    ?.addEventListener(
-      "keydown",
-      event => {
-
-        if (
-          event.key ===
-          "Enter"
-        ) {
-
-          event.preventDefault();
-
-          searchStops(true);
-        }
-      }
-    );
-
-
-  document
-    .getElementById(
-      "favoriteButton"
-    )
-    ?.addEventListener(
-      "click",
-      toggleFavorite
-    );
-
-
-  document
-    .querySelectorAll(
-      ".nav-button"
-    )
-    .forEach(
-      button => {
-
-        button.addEventListener(
-          "click",
-          () =>
-            showPage(
-              button.dataset.page
-            )
-        );
-      }
-    );
-
-
-  if (
-    lastStop?.lid
-  ) {
-
-    currentStop =
-      lastStop;
-
-  } else {
-
-    try {
-
-      const results =
-        await findStops(
-          "Marktplatz"
-        );
-
-
-      if (
-        results.length
-      ) {
-
-        currentStop = {
-          name:
-            results[0].name,
-
-          id:
-            results[0].extId ||
-            "",
-
-          lid:
-            results[0].lid
-        };
-
-      }
-
-    } catch (error) {
-
-      console.error(
-        error
-      );
-    }
-  }
-
-
-  updateStopTitle();
-
-  updateFavoriteButton();
-
-
-  if (currentStop) {
-    await loadDepartures();
-  }
-
-
-  clearInterval(
-    refreshTimer
-  );
-
-
-  refreshTimer =
-    setInterval(
-      loadDepartures,
-      REFRESH_INTERVAL
-    );
-}
-
-
-document.addEventListener(
-  "visibilitychange",
-  () => {
-
-    if (
-      document.visibilityState ===
-      "visible" &&
-      currentStop
-    ) {
-
-      loadDepartures();
-    }
-  }
-);
-
-
-if (
-  "serviceWorker"
-  in navigator
-) {
-
-  navigator.serviceWorker
-    .register("./sw.js")
-    .then(
-      registration =>
-        registration.update()
-    )
-    .catch(
-      console.error
-    );
-}
-
-
-initialize();    },
-    body: JSON.stringify({
-      ...base,
-      svcReqL
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error("HTTP " + response.status);
-  }
-
-  const data = await response.json();
-
-  if (data.err && data.err !== "OK") {
-    throw new Error(data.errTxt || data.err);
-  }
-
-  if (!data.svcResL || !data.svcResL.length) {
-    throw new Error("Keine INSA-Antwort");
-  }
-
-  return data;
-}
-
-
-/* =========================
-   HALTESTELLENSUCHE
-========================= */
-
-async function findStops(query) {
-  const data = await hafas([
-    {
-      meth: "LocMatch",
-      req: {
-        input: {
-          loc: {
-            type: "S",
-            name: query
-          },
-          field: "S",
-          maxLoc: 15
-        }
-      }
-    }
-  ]);
-
-  const service = data.svcResL[0];
-
-  if (service.err !== "OK") {
-    throw new Error(service.errTxt || service.err);
-  }
-
-  return service.res?.match?.locL || [];
-}
-
-
-async function searchStops() {
-  const input = document.getElementById("search");
-  const query = input.value.trim();
-
-  if (!query) return;
-
-  const box = document.getElementById("results");
-  box.innerHTML = "Suche …";
-
-  try {
-    const stops = await findStops(query);
-
-    if (!stops.length) {
-      box.innerHTML = "Keine Haltestelle gefunden.";
-      return;
-    }
-
-    box.innerHTML = "";
-
-    stops.slice(0, 8).forEach((item) => {
-      const button = document.createElement("button");
-      button.textContent = item.name;
-
-      button.onclick = () => {
-        chooseStop(item);
-      };
-
-      box.appendChild(button);
-    });
-
-  } catch (error) {
-    box.innerHTML =
-      "Fehler bei der Suche: " + error.message;
-  }
-}
-
-
-async function chooseStop(item) {
-  stop = {
-    name: item.name,
-    id: item.lid
-  };
-
-  document.getElementById("results").innerHTML = "";
-  document.getElementById("stopName").textContent = stop.name;
-
-  await load();
-}
-
-
-/* =========================
-   DATUM / ZEIT
-========================= */
-
-function hafasDate() {
-  const now = new Date();
-
-  return (
-    now.getFullYear().toString() +
-    String(now.getMonth() + 1).padStart(2, "0") +
-    String(now.getDate()).padStart(2, "0")
-  );
-}
-
-
-function hafasTime() {
-  const now = new Date();
-
-  return (
-    String(now.getHours()).padStart(2, "0") +
-    String(now.getMinutes()).padStart(2, "0") +
-    "00"
-  );
-}
-
-
-function normalizeHafasTime(value) {
-  if (!value) return null;
-
-  const text = String(value).replace(/\D/g, "");
-
-  if (text.length < 4) return null;
-
-  return text.padStart(6, "0").slice(0, 6);
-}
-
-
-function timeToDate(value) {
-  const normalized = normalizeHafasTime(value);
-
-  if (!normalized) return null;
-
-  const hours = Number(normalized.slice(0, 2));
-  const minutes = Number(normalized.slice(2, 4));
-  const seconds = Number(normalized.slice(4, 6));
-
-  const now = new Date();
-  const date = new Date(now);
-
-  date.setHours(hours, minutes, seconds, 0);
-
-  /*
-    INSA liefert bei Nachtfahrten Zeiten nach Mitternacht.
-    Liegt die errechnete Uhrzeit deutlich in der Vergangenheit,
-    gehört sie sehr wahrscheinlich zum folgenden Kalendertag.
-  */
-  if (date.getTime() < now.getTime() - 6 * 60 * 60 * 1000) {  return service.res?.match?.locL || [];
-}
-
-async function searchStops() {
-  const input = document.getElementById("search");
-  const query = input.value.trim();
-
-  if (!query) return;
-
-  const box = document.getElementById("results");
-  box.innerHTML = "Suche …";
-
-  try {
-    const stops = await findStops(query);
-
-    if (!stops.length) {
-      box.innerHTML = "Keine Haltestelle gefunden.";
-      return;
-    }
-
-    box.innerHTML = "";
-
-    stops.slice(0, 8).forEach((item) => {
-      const button = document.createElement("button");
-      button.textContent = item.name;
-      button.onclick = () => chooseStop(item);
-      box.appendChild(button);
-    });
-
-  } catch (error) {
-    box.innerHTML = "Fehler bei der Suche: " + error.message;
-  }
-}
-
-async function chooseStop(item) {
-  stop = {
-    name: item.name,
-    id: item.lid
-  };
-
-  document.getElementById("results").innerHTML = "";
-  document.getElementById("stopName").textContent = stop.name;
-
-  await load();
-}
-
-function hafasDate() {
-  const now = new Date();
-
-  return (
-    now.getFullYear().toString() +
-    String(now.getMonth() + 1).padStart(2, "0") +
-    String(now.getDate()).padStart(2, "0")
-  );
-}
-
-function hafasTime() {
-  const now = new Date();
-
-  return (
-    String(now.getHours()).padStart(2, "0") +
-    String(now.getMinutes()).padStart(2, "0") +
-    "00"
-  );
-}
-
-function showTime(value) {
-  if (!value || value.length < 4) return "--";
-
-  const hours = Number(value.slice(0, 2));
-  const minutes = Number(value.slice(2, 4));
-
-  const now = new Date();
-  const departure = new Date();
-
-  departure.setHours(hours, minutes, 0, 0);
-
-  if (departure < now) {
-    departure.setDate(departure.getDate() + 1);
-  }
-
-  const diff = Math.round((departure - now) / 60000);
-
-  if (diff <= 0) return "jetzt";
-  if (diff === 1) return "in 1 min";
-
-  return "in " + diff + " min";
-}
-
-async function load() {
-  const status = document.getElementById("status");
-  const departures = document.getElementById("departures");
-
-  status.textContent = "Aktualisiere …";
-
-  try {
-    if (!stop.id) {
-      const found = await findStops("Halle (Saale), Marktplatz");
-
-      if (!found.length) {
-        throw new Error("Marktplatz nicht gefunden");
-      }
-
-      stop = {
-        name: found[0].name,
-        id: found[0].lid
-      };
-
-      document.getElementById("stopName").textContent = stop.name;
-    }
-
-    const data = await hafas([
-      {
-        meth: "StationBoard",
-        req: {
-          type: "DEP",
-          stbLoc: {
-            lid: stop.id
-          },
-          dirLoc: null,
-          maxJny: 15,
-          date: hafasDate(),
-          time: hafasTime(),
-          dur: 60,
-          jnyFltrL: [
-            {
-              type: "PROD",
-              mode: "INC",
-              value: 1023
-            }
-          ]
-        }
-      }
-    ]);
-
-    const service = data.svcResL[0];
-
-    if (service.err !== "OK") {
-      throw new Error(service.errTxt || service.err);
-    }
-
-    const result = service.res || {};
-    const journeys = result.jnyL || [];
-    const products = result.common?.prodL || [];
-
-    status.textContent =
-      "Zuletzt aktualisiert: " +
-      new Date().toLocaleTimeString("de-DE", {
-        hour: "2-digit",
-        minute: "2-digit"
-      });
-
-    departures.innerHTML = "";
-
-    if (!journeys.length) {
-      departures.textContent = "Keine Abfahrten gefunden.";
-      return;
-    }
-
-    journeys.forEach((journey) => {
-      const row = document.createElement("div");
-      row.className = "row";
-
-      const stopInfo = journey.stbStop || {};
-
-      const productIndex =
-        journey.prodX ??
-        journey.prodL?.[0]?.prodX ??
-        stopInfo.dProdX;
-
-      const product =
-        productIndex !== undefined
-          ? products[productIndex]
-          : null;
-
-      const line =
-        product?.prodCtx?.line ||
-        product?.prodCtx?.catOutS ||
-        product?.name ||
-        "?";
-
-      const destination =
-        journey.dirTxt ||
-        "Unbekannt";
-
-      const planned = stopInfo.dTimeS;
-      const realtime = stopInfo.dTimeR || planned;
-
-      const left = document.createElement("div");
-      left.innerHTML =
-        "<b>" + line + "</b><br>" +
-        "<span class='muted'>" + destination + "</span>";
-
-      const right = document.createElement("div");
-      right.className = "time";
-      right.textContent = showTime(realtime);
-
-      row.appendChild(left);
-      row.appendChild(right);
-      departures.appendChild(row);
-    });
-
-  } catch (error) {
-    status.textContent = "Fehler";
-    departures.textContent = error.message;
-  }
-}
-
-function tab(id, element) {
-  document
-    .querySelectorAll("main > section")
-    .forEach((section) => section.classList.add("hidden"));
-
-  document.getElementById(id).classList.remove("hidden");
-
-  document
-    .querySelectorAll(".tabs button")
-    .forEach((button) => button.classList.remove("active"));
-
-  element.classList.add("active");
-
-  if (id === "favorites") renderFav();
-}
-
-function renderFav() {
-  const box = document.getElementById("favList");
-
-  if (!favorites.length) {
-    box.innerHTML = "Noch keine Favoriten.";
-    return;
-  }
-
-  box.innerHTML = "";
-
-  favorites.forEach((favorite) => {
-    const button = document.createElement("button");
-    button.textContent = favorite.name;
-
-    button.onclick = () => {
-      stop = favorite;
-      document.getElementById("stopName").textContent = stop.name;
-      load();
-    };
-
-    box.appendChild(button);
-  });
-}
-
-function chooseFav() {
-  if (!stop.id) return;
-
-  if (!favorites.some((f) => f.id === stop.id)) {
-    favorites.push(stop);
-    localStorage.setItem("fav", JSON.stringify(favorites));
-  }
-}
-
-window.addEventListener("beforeinstallprompt", (event) => {
-  event.preventDefault();
-  deferredPrompt = event;
-});
-
-async function installApp() {
-  if (deferredPrompt) {
-    deferredPrompt.prompt();
-    deferredPrompt = null;
-  } else {
-    alert("Nutze im Browser „Zum Startbildschirm hinzufügen“.");
-  }
-}
-
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js");
-}
-
-load();
-setInterval(load, 30000);
+      "Zu
