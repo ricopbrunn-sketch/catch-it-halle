@@ -55,9 +55,9 @@ async function findStops(query) {
       type: "S",
       name: query
     },
-    field: "S"
-  },
-  maxLoc: 15
+    field: "S",
+    maxLoc: 15
+  }
 }
   ]);
 
