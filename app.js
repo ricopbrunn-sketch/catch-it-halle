@@ -1,4 +1,4 @@
-const AID="hf7mcf9bv3nv8g5f", URL="https://reiseauskunft.insa.de/bin/mgate.exe";
+const AID="hf7mcf9bv3nv8g5f", URL="https://frosty-leaf-0fc9.ricopbrunn.workers.dev";
 let stop={name:"Marktplatz",id:null}, favorites=JSON.parse(localStorage.getItem("fav")||"[]"), deferredPrompt;
 
 const base={ver:"1.81",lang:"deu",auth:{type:"AID",aid:AID},client:{id:"NASA",v:1000102,type:"WEB",name:"webapp"}};
