@@ -1,74 +1,351 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07131f">
-  <title>Catch it Halle – Live-Karte</title>
+  <meta charset="UTF-8">
 
-  <link rel="preconnect" href="https://tile.openstreetmap.org">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIINfQ3yn5Y7p2G8F5VbYIYc6VQfhRSV5c="
-        crossorigin="">
-  <link rel="stylesheet" href="style.css">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  >
+
+  <meta name="theme-color" content="#071923">
+
+  <title>Catch it Live – Halle (Saale)</title>
+
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  >
+
+  <!-- Deine CSS-Datei -->
+  <link
+    rel="stylesheet"
+    href="style.css?v=20260913-5"
+  >
 </head>
+
 <body>
-  <header class="topbar">
-    <div>
-      <div class="eyebrow">ÖPNV Halle (Saale)</div>
-      <h1>Catch it <span>Live</span></h1>
-    </div>
-    <button id="locateBtn" class="icon-btn" title="Auf Halle zentrieren" aria-label="Auf Halle zentrieren">◎</button>
-  </header>
 
-  <main>
-    <section class="controls">
+  <div class="app">
+
+    <!-- =====================================================
+         HEADER
+    ====================================================== -->
+
+    <header class="header">
+
+      <div>
+        <div class="eyebrow">
+          ÖPNV HALLE (SAALE)
+        </div>
+
+        <h1>
+          Catch it <span>Live</span>
+        </h1>
+      </div>
+
+
+      <button
+        id="locateBtn"
+        class="icon-btn"
+        type="button"
+        aria-label="Karte zentrieren"
+      >
+        ◎
+      </button>
+
+    </header>
+
+
+    <!-- =====================================================
+         SUCHE
+    ====================================================== -->
+
+    <section class="search-section">
+
       <div class="search-wrap">
-        <input id="stopSearch" type="search" placeholder="Haltestelle suchen …" autocomplete="off">
-        <div id="searchResults" class="search-results hidden"></div>
+
+        <input
+          id="stopSearch"
+          type="search"
+          placeholder="Haltestelle suchen …"
+          autocomplete="off"
+        >
+
+        <div
+          id="searchResults"
+          class="search-results hidden"
+        ></div>
+
       </div>
 
-      <div class="chips">
-        <button class="chip active" data-filter="all">Alle</button>
-        <button class="chip" data-filter="tram">Tram</button>
-        <button class="chip" data-filter="bus">Bus</button>
+
+      <!-- ===================================================
+           FILTER
+      ==================================================== -->
+
+      <div class="filter-row">
+
+        <button
+          class="chip active"
+          data-filter="all"
+          type="button"
+        >
+          Alle
+        </button>
+
+        <button
+          class="chip"
+          data-filter="tram"
+          type="button"
+        >
+          Tram
+        </button>
+
+        <button
+          class="chip"
+          data-filter="bus"
+          type="button"
+        >
+          Bus
+        </button>
+
       </div>
+
     </section>
 
-    <section class="map-card">
+
+    <!-- =====================================================
+         KARTE
+    ====================================================== -->
+
+    <main class="map-wrap">
+
       <div id="map"></div>
 
-      <div class="map-status">
-        <span id="statusDot" class="status-dot"></span>
-        <span id="mapStatus">Lade Haltestellen …</span>
-      </div>
 
-      <button id="refreshBtn" class="refresh-btn" type="button">↻</button>
-    </section>
+      <!-- Status unten auf der Karte -->
 
-    <section id="panel" class="panel">
-      <div class="panel-handle"></div>
-      <div id="panelEmpty" class="panel-empty">
-        <strong>Haltestelle antippen</strong>
-        <span>Dann siehst du hier die nächsten Live-Abfahrten.</span>
-      </div>
+      <div class="map-bottom">
 
-      <div id="panelContent" class="hidden">
-        <div class="panel-head">
-          <div>
-            <div class="eyebrow">Live-Abfahrten</div>
-            <h2 id="stopName">Haltestelle</h2>
-          </div>
-          <button id="closePanel" class="icon-btn">×</button>
+        <div class="status-pill">
+
+          <span
+            id="statusDot"
+            class="status-dot loading"
+          ></span>
+
+          <span id="mapStatus">
+            Haltestellen werden geladen …
+          </span>
+
         </div>
-        <div id="departures" class="departures"></div>
-      </div>
-    </section>
-  </main>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-          crossorigin=""></script>
-  <script src="app.js"></script>
+
+        <button
+          id="refreshBtn"
+          class="refresh-btn"
+          type="button"
+          aria-label="Aktualisieren"
+        >
+          ↻
+        </button>
+
+      </div>
+
+    </main>
+
+
+    <!-- =====================================================
+         ABFAHRTSPANEL
+    ====================================================== -->
+
+    <section
+      id="panel"
+      class="panel"
+    >
+
+      <div class="panel-handle"></div>
+
+
+      <!-- Wenn noch keine Haltestelle ausgewählt wurde -->
+
+      <div
+        id="panelEmpty"
+        class="panel-empty"
+      >
+
+        <strong>
+          Haltestelle<br>
+          antippen
+        </strong>
+
+        <span>
+          Dann siehst du hier die nächsten Live-Abfahrten.
+        </span>
+
+      </div>
+
+
+      <!-- Inhalt bei ausgewählter Haltestelle -->
+
+      <div
+        id="panelContent"
+        class="panel-content hidden"
+      >
+
+        <div class="panel-head">
+
+          <div>
+
+            <div class="panel-label">
+              Haltestelle
+            </div>
+
+            <h2 id="stopName">
+              Haltestelle
+            </h2>
+
+          </div>
+
+
+          <button
+            id="closePanel"
+            class="close-btn"
+            type="button"
+            aria-label="Panel schließen"
+          >
+            ×
+          </button>
+
+        </div>
+
+
+        <div id="departures">
+
+          <div class="empty-note">
+            Live-Abfahrten werden geladen …
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </div>
+
+
+  <!-- =======================================================
+       LEAFLET
+  ======================================================== -->
+
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  ></script>
+
+
+  <!-- =======================================================
+       ALTEN PWA-/SERVICE-WORKER-CACHE ENTFERNEN
+  ======================================================== -->
+
+  <script>
+    async function resetOldCache() {
+
+      try {
+
+        /*
+          Alte Service Worker entfernen.
+          Genau diese können sonst eine alte app.js liefern.
+        */
+
+        if ("serviceWorker" in navigator) {
+
+          const registrations =
+            await navigator.serviceWorker.getRegistrations();
+
+          for (const registration of registrations) {
+            await registration.unregister();
+          }
+        }
+
+
+        /*
+          Alte Cache-Storage-Einträge entfernen.
+        */
+
+        if ("caches" in window) {
+
+          const cacheNames =
+            await caches.keys();
+
+          for (const cacheName of cacheNames) {
+            await caches.delete(cacheName);
+          }
+        }
+
+
+        console.log(
+          "Alter Catch-it-Cache wurde entfernt."
+        );
+
+      } catch (error) {
+
+        console.warn(
+          "Cache konnte nicht vollständig entfernt werden:",
+          error
+        );
+      }
+    }
+
+
+    async function startApp() {
+
+      await resetOldCache();
+
+
+      /*
+        app.js dynamisch laden.
+        Die Versionsnummer sorgt zusätzlich dafür,
+        dass Safari/Chrome eine neue Datei anfordert.
+      */
+
+      const script =
+        document.createElement("script");
+
+      script.src =
+        "app.js?v=20260913-5";
+
+      script.defer =
+        true;
+
+
+      script.onerror = () => {
+
+        console.error(
+          "app.js konnte nicht geladen werden."
+        );
+
+
+        const status =
+          document.getElementById("mapStatus");
+
+        if (status) {
+          status.textContent =
+            "app.js konnte nicht geladen werden";
+        }
+      };
+
+
+      document.body.appendChild(
+        script
+      );
+    }
+
+
+    startApp();
+  </script>
+
 </body>
 </html>
