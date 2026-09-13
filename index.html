@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="de">
+
 <head>
   <meta charset="UTF-8">
 
@@ -12,16 +13,14 @@
 
   <title>Catch it Live – Halle (Saale)</title>
 
-  <!-- Leaflet -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
   >
 
-  <!-- Deine CSS-Datei -->
   <link
     rel="stylesheet"
-    href="style.css?v=20260913-5"
+    href="style.css?v=20260913-10"
   >
 </head>
 
@@ -29,13 +28,11 @@
 
   <div class="app">
 
-    <!-- =====================================================
-         HEADER
-    ====================================================== -->
-
+    <!-- HEADER -->
     <header class="header">
 
-      <div>
+      <div class="header-title">
+
         <div class="eyebrow">
           ÖPNV HALLE (SAALE)
         </div>
@@ -43,6 +40,7 @@
         <h1>
           Catch it <span>Live</span>
         </h1>
+
       </div>
 
 
@@ -50,7 +48,7 @@
         id="locateBtn"
         class="icon-btn"
         type="button"
-        aria-label="Karte zentrieren"
+        aria-label="Karte auf Halle zentrieren"
       >
         ◎
       </button>
@@ -58,10 +56,7 @@
     </header>
 
 
-    <!-- =====================================================
-         SUCHE
-    ====================================================== -->
-
+    <!-- SUCHE -->
     <section class="search-section">
 
       <div class="search-wrap">
@@ -81,10 +76,7 @@
       </div>
 
 
-      <!-- ===================================================
-           FILTER
-      ==================================================== -->
-
+      <!-- FILTER -->
       <div class="filter-row">
 
         <button
@@ -116,18 +108,14 @@
     </section>
 
 
-    <!-- =====================================================
-         KARTE
-    ====================================================== -->
-
-    <main class="map-wrap">
+    <!-- KARTE -->
+    <main class="map-area">
 
       <div id="map"></div>
 
 
-      <!-- Status unten auf der Karte -->
-
-      <div class="map-bottom">
+      <!-- STATUS -->
+      <div class="map-controls">
 
         <div class="status-pill">
 
@@ -157,10 +145,7 @@
     </main>
 
 
-    <!-- =====================================================
-         ABFAHRTSPANEL
-    ====================================================== -->
-
+    <!-- ABFAHRTSPANEL -->
     <section
       id="panel"
       class="panel"
@@ -169,8 +154,7 @@
       <div class="panel-handle"></div>
 
 
-      <!-- Wenn noch keine Haltestelle ausgewählt wurde -->
-
+      <!-- LEER -->
       <div
         id="panelEmpty"
         class="panel-empty"
@@ -188,8 +172,7 @@
       </div>
 
 
-      <!-- Inhalt bei ausgewählter Haltestelle -->
-
+      <!-- HALTESTELLE GEWÄHLT -->
       <div
         id="panelContent"
         class="panel-content hidden"
@@ -200,7 +183,7 @@
           <div>
 
             <div class="panel-label">
-              Haltestelle
+              HALTESTELLE
             </div>
 
             <h2 id="stopName">
@@ -214,7 +197,7 @@
             id="closePanel"
             class="close-btn"
             type="button"
-            aria-label="Panel schließen"
+            aria-label="Schließen"
           >
             ×
           </button>
@@ -237,115 +220,17 @@
   </div>
 
 
-  <!-- =======================================================
-       LEAFLET
-  ======================================================== -->
-
+  <!-- LEAFLET -->
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
   ></script>
 
 
-  <!-- =======================================================
-       ALTEN PWA-/SERVICE-WORKER-CACHE ENTFERNEN
-  ======================================================== -->
-
-  <script>
-    async function resetOldCache() {
-
-      try {
-
-        /*
-          Alte Service Worker entfernen.
-          Genau diese können sonst eine alte app.js liefern.
-        */
-
-        if ("serviceWorker" in navigator) {
-
-          const registrations =
-            await navigator.serviceWorker.getRegistrations();
-
-          for (const registration of registrations) {
-            await registration.unregister();
-          }
-        }
-
-
-        /*
-          Alte Cache-Storage-Einträge entfernen.
-        */
-
-        if ("caches" in window) {
-
-          const cacheNames =
-            await caches.keys();
-
-          for (const cacheName of cacheNames) {
-            await caches.delete(cacheName);
-          }
-        }
-
-
-        console.log(
-          "Alter Catch-it-Cache wurde entfernt."
-        );
-
-      } catch (error) {
-
-        console.warn(
-          "Cache konnte nicht vollständig entfernt werden:",
-          error
-        );
-      }
-    }
-
-
-    async function startApp() {
-
-      await resetOldCache();
-
-
-      /*
-        app.js dynamisch laden.
-        Die Versionsnummer sorgt zusätzlich dafür,
-        dass Safari/Chrome eine neue Datei anfordert.
-      */
-
-      const script =
-        document.createElement("script");
-
-      script.src =
-        "app.js?v=20260913-5";
-
-      script.defer =
-        true;
-
-
-      script.onerror = () => {
-
-        console.error(
-          "app.js konnte nicht geladen werden."
-        );
-
-
-        const status =
-          document.getElementById("mapStatus");
-
-        if (status) {
-          status.textContent =
-            "app.js konnte nicht geladen werden";
-        }
-      };
-
-
-      document.body.appendChild(
-        script
-      );
-    }
-
-
-    startApp();
-  </script>
+  <!-- APP -->
+  <script
+    src="app.js?v=20260913-10"
+  ></script>
 
 </body>
+
 </html>
